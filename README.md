@@ -24,6 +24,25 @@ The commands to run training and evaluation are in comments at the top of the sc
 Data is stored in GCS buckets. The scripts are written to assume that the bucket names are of the form `gs://mybucketprefix-us-central1`; i.e. some prefix followed by the region.
 The prefix should be passed into the scripts using the `--bucket_name_prefix` flag.
 
+### Running on a local server (no GCS path rewrite)
+You can now run scripts with local filesystem paths by leaving `--bucket_name_prefix` empty (or omitting it).
+
+Examples:
+```bash
+python3 scripts/run_cifar.py train \
+  --tpu_name local-tpu \
+  --exp_name my_local_exp \
+  --tfds_data_dir /data/tensorflow_datasets \
+  --log_dir /data/logs
+
+python3 scripts/run_lsun.py evaluation \
+  --tpu_name local-tpu \
+  --model_dir /data/logs/9999-99-99/my_local_exp \
+  --tfr_file /data/lsun/church-r08.tfrecords
+```
+
+If `--bucket_name_prefix` is set, paths are still converted to `gs://...` as before.
+
 Models and samples can be found at: https://www.dropbox.com/sh/pm6tn31da21yrx4/AABWKZnBzIROmDjGxpB6vn6Ja
 
 ## Citation

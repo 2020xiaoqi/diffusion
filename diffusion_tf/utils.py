@@ -197,7 +197,23 @@ def get_gcp_region():
   import requests
   metadata_server = "http://metadata/computeMetadata/v1/instance/"
   metadata_flavor = {'Metadata-Flavor': 'Google'}
-  zone = requests.get(metadata_server + 'zone', headers=metadata_flavor).text
+  zone = requests.get(metadata_server + 'zone', headers=metadata_flavor, timeout=2).text
   zone = zone.split('/')[-1]
   region = '-'.join(zone.split('-')[:-1])
   return region
+
+
+def resolve_data_path(path: str, bucket_name_prefix: str = None, region: str = None) -> str:
+  """
+  Resolve a path for both local servers and GCS.
+
+  - If `path` is already an absolute URL (gs://, s3://, etc.), return as-is.
+  - If `bucket_name_prefix` is provided, compose a GCS path.
+  - Otherwise, return the local path unchanged.
+  """
+  if '://' in path:
+    return path
+  if bucket_name_prefix:
+    region = region or get_gcp_region()
+    return 'gs://{}-{}/{}'.format(bucket_name_prefix, region, path)
+  return path
