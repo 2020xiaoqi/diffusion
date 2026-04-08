@@ -98,9 +98,9 @@ def _load_model(kwargs, ds):
   )
 
 
-def simple_eval(model_dir, tpu_name, bucket_name_prefix, mode, load_ckpt, total_bs=256, tfds_data_dir='tensorflow_datasets'):
-  region = utils.get_gcp_region()
-  tfds_data_dir = 'gs://{}-{}/{}'.format(bucket_name_prefix, region, tfds_data_dir)
+def simple_eval(model_dir, tpu_name, bucket_name_prefix='', mode='bpd', load_ckpt=None, total_bs=256,
+                tfds_data_dir='tensorflow_datasets'):
+  tfds_data_dir = utils.resolve_data_path(tfds_data_dir, bucket_name_prefix=bucket_name_prefix)
   kwargs = tpu_utils.load_train_kwargs(model_dir)
   print('loaded kwargs:', kwargs)
   ds = datasets.get_dataset(kwargs['dataset'], tfds_data_dir=tfds_data_dir)
@@ -111,11 +111,10 @@ def simple_eval(model_dir, tpu_name, bucket_name_prefix, mode, load_ckpt, total_
 
 
 def evaluation(  # evaluation loop for use during training
-    model_dir, tpu_name, bucket_name_prefix, once=False, dump_samples_only=False, total_bs=256,
+    model_dir, tpu_name, bucket_name_prefix='', once=False, dump_samples_only=False, total_bs=256,
     tfds_data_dir='tensorflow_datasets', load_ckpt=None
 ):
-  region = utils.get_gcp_region()
-  tfds_data_dir = 'gs://{}-{}/{}'.format(bucket_name_prefix, region, tfds_data_dir)
+  tfds_data_dir = utils.resolve_data_path(tfds_data_dir, bucket_name_prefix=bucket_name_prefix)
   kwargs = tpu_utils.load_train_kwargs(model_dir)
   print('loaded kwargs:', kwargs)
   ds = datasets.get_dataset(kwargs['dataset'], tfds_data_dir=tfds_data_dir)
@@ -130,16 +129,15 @@ def evaluation(  # evaluation loop for use during training
 
 
 def train(
-    exp_name, tpu_name, bucket_name_prefix, model_name='unet2d16b2', dataset='cifar10',
+    exp_name, tpu_name, bucket_name_prefix='', model_name='unet2d16b2', dataset='cifar10',
     optimizer='adam', total_bs=128, grad_clip=1., lr=2e-4, warmup=5000,
     num_diffusion_timesteps=1000, beta_start=0.0001, beta_end=0.02, beta_schedule='linear',
     model_mean_type='eps', model_var_type='fixedlarge', loss_type='mse',
     dropout=0.1, randflip=1,
     tfds_data_dir='tensorflow_datasets', log_dir='logs', keep_checkpoint_max=2
 ):
-  region = utils.get_gcp_region()
-  tfds_data_dir = 'gs://{}-{}/{}'.format(bucket_name_prefix, region, tfds_data_dir)
-  log_dir = 'gs://{}-{}/{}'.format(bucket_name_prefix, region, log_dir)
+  tfds_data_dir = utils.resolve_data_path(tfds_data_dir, bucket_name_prefix=bucket_name_prefix)
+  log_dir = utils.resolve_data_path(log_dir, bucket_name_prefix=bucket_name_prefix)
   kwargs = dict(locals())
   ds = datasets.get_dataset(dataset, tfds_data_dir=tfds_data_dir)
   tpu_utils.run_training(
