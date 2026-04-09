@@ -26,22 +26,46 @@ The prefix should be passed into the scripts using the `--bucket_name_prefix` fl
 
 ### Running on a local server (no GCS path rewrite)
 You can now run scripts with local filesystem paths by leaving `--bucket_name_prefix` empty (or omitting it).
+For non-TPU Linux servers, set `--tpu_name` to `local`, `cpu`, `gpu`, or leave it empty; the code will automatically
+fall back to a single-device (`/gpu:0` if available, otherwise `/cpu:0`) strategy.
 
-Examples:
+Examples (Ubuntu/local):
 ```bash
 python3 scripts/run_cifar.py train \
-  --tpu_name local-tpu \
+  --tpu_name local \
   --exp_name my_local_exp \
   --tfds_data_dir /data/tensorflow_datasets \
   --log_dir /data/logs
 
 python3 scripts/run_lsun.py evaluation \
-  --tpu_name local-tpu \
+  --tpu_name local \
   --model_dir /data/logs/9999-99-99/my_local_exp \
   --tfr_file /data/lsun/church-r08.tfrecords
 ```
 
 If `--bucket_name_prefix` is set, paths are still converted to `gs://...` as before.
+
+### Dataset paths on a local server
+- CIFAR-10 and CelebA-HQ use TFDS `data_dir` (`--tfds_data_dir`), e.g.:
+  - `/data/tensorflow_datasets/cifar10/...`
+  - `/data/tensorflow_datasets/celeb_a_hq/...`
+- LSUN uses a direct TFRecord path (`--tfr_file`), e.g.:
+  - `/data/lsun/church/church-r08.tfrecords`
+  - `/data/lsun/bedroom-full/bedroom-full-r08.tfrecords`
+  - `/data/lsun/cat/cat-r08.tfrecords`
+
+Recommended directory layout:
+```text
+/data/
+  logs/
+  tensorflow_datasets/
+    cifar10/
+    celeb_a_hq/
+  lsun/
+    church/church-r08.tfrecords
+    bedroom-full/bedroom-full-r08.tfrecords
+    cat/cat-r08.tfrecords
+```
 
 Models and samples can be found at: https://www.dropbox.com/sh/pm6tn31da21yrx4/AABWKZnBzIROmDjGxpB6vn6Ja
 
