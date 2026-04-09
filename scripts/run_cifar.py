@@ -98,7 +98,7 @@ def _load_model(kwargs, ds):
   )
 
 
-def simple_eval(model_dir, tpu_name, bucket_name_prefix='', mode='bpd', load_ckpt=None, total_bs=256,
+def simple_eval(model_dir, tpu_name='local', bucket_name_prefix='', mode='bpd', load_ckpt=None, total_bs=256,
                 tfds_data_dir='tensorflow_datasets'):
   tfds_data_dir = utils.resolve_data_path(tfds_data_dir, bucket_name_prefix=bucket_name_prefix)
   kwargs = tpu_utils.load_train_kwargs(model_dir)
@@ -111,7 +111,7 @@ def simple_eval(model_dir, tpu_name, bucket_name_prefix='', mode='bpd', load_ckp
 
 
 def evaluation(  # evaluation loop for use during training
-    model_dir, tpu_name, bucket_name_prefix='', once=False, dump_samples_only=False, total_bs=256,
+    model_dir, tpu_name='local', bucket_name_prefix='', once=False, dump_samples_only=False, total_bs=256,
     tfds_data_dir='tensorflow_datasets', load_ckpt=None
 ):
   tfds_data_dir = utils.resolve_data_path(tfds_data_dir, bucket_name_prefix=bucket_name_prefix)
@@ -129,7 +129,7 @@ def evaluation(  # evaluation loop for use during training
 
 
 def train(
-    exp_name, tpu_name, bucket_name_prefix='', model_name='unet2d16b2', dataset='cifar10',
+    exp_name, tpu_name='local', bucket_name_prefix='', model_name='unet2d16b2', dataset='cifar10',
     optimizer='adam', total_bs=128, grad_clip=1., lr=2e-4, warmup=5000,
     num_diffusion_timesteps=1000, beta_start=0.0001, beta_end=0.02, beta_schedule='linear',
     model_mean_type='eps', model_var_type='fixedlarge', loss_type='mse',
