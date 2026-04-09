@@ -141,7 +141,7 @@ def run_training(
 
   # model_fn for TPUEstimator
   def model_fn(features, params, mode):
-    local_bs = params['batch_size']
+    local_bs = params.get('batch_size', total_bs)
     print('Global batch size: {}, local batch size: {}'.format(total_bs, local_bs))
     if use_tpu:
       assert total_bs == num_tpu_replicas() * local_bs
