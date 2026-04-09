@@ -18,6 +18,12 @@ from .. import utils
 
 # ========== TPU utilities ==========
 
+def _one_device_strategy():
+  device = '/gpu:0' if tf.test.is_gpu_available() else '/cpu:0'
+  if hasattr(tf.distribute, 'OneDeviceStrategy'):
+    return tf.distribute.OneDeviceStrategy(device)
+  return tf.distribute.experimental.OneDeviceStrategy(device)
+
 def num_tpu_replicas():
   return tpu_function.get_tpu_context().number_of_shards
 
@@ -29,11 +35,15 @@ def get_tpu_replica_id():
 
 def distributed(fn, *, args, reduction, strategy):
   """
-  Sharded computation followed by concat/mean for TPUStrategy.
+  Sharded computation followed by concat/mean for tf.distribute strategies.
   """
-  out = strategy.experimental_run_v2(fn, args=args)
+  if hasattr(strategy, 'run'):
+    out = strategy.run(fn, args=args)
+  else:
+    out = strategy.experimental_run_v2(fn, args=args)
   if reduction == 'mean':
-    return tf.nest.map_structure(lambda x: tf.reduce_mean(strategy.reduce('mean', x)), out)
+    return tf.nest.map_structure(
+      lambda x: tf.reduce_mean(strategy.reduce(tf.distribute.ReduceOp.MEAN, x, axis=None)), out)
   elif reduction == 'concat':
     return tf.nest.map_structure(lambda x: tf.concat(strategy.experimental_local_results(x), axis=0), out)
   else:
@@ -107,6 +117,7 @@ def run_training(
     warm_start_from=None
 ):
   tf.logging.set_verbosity(tf.logging.INFO)
+  use_tpu = bool(tpu) and str(tpu).lower() not in ['local', 'cpu', 'gpu', 'none']
 
   # Create checkpoint directory
   model_dir = os.path.join(
@@ -130,7 +141,10 @@ def run_training(
   def model_fn(features, params, mode):
     local_bs = params['batch_size']
     print('Global batch size: {}, local batch size: {}'.format(total_bs, local_bs))
-    assert total_bs == num_tpu_replicas() * local_bs
+    if use_tpu:
+      assert total_bs == num_tpu_replicas() * local_bs
+    else:
+      assert total_bs == local_bs
 
     assert mode == tf.estimator.ModeKeys.TRAIN, 'only TRAIN mode supported'
     assert features['image'].shape[0] == local_bs
@@ -161,8 +175,8 @@ def run_training(
       global_step=global_step,
       lr=warmed_up_lr,
       optimizer=optimizer,
-      grad_clip=grad_clip / float(num_tpu_replicas()),
-      tpu=True
+      grad_clip=grad_clip / float(num_tpu_replicas() if use_tpu else 1),
+      tpu=use_tpu
     )
 
     # ema
@@ -176,30 +190,44 @@ def run_training(
     tpu_summary.scalar('train/gnorm', gnorm)
     tpu_summary.scalar('train/pnorm', utils.rms(trainable_variables))
     tpu_summary.scalar('train/lr', warmed_up_lr)
-    return tf.estimator.tpu.TPUEstimatorSpec(
-      mode=mode, host_call=tpu_summary.get_host_call(), loss=loss, train_op=train_op)
+    if use_tpu:
+      return tf.estimator.tpu.TPUEstimatorSpec(
+        mode=mode, host_call=tpu_summary.get_host_call(), loss=loss, train_op=train_op)
+    return tf.estimator.EstimatorSpec(mode=mode, loss=loss, train_op=train_op)
 
   # Set up Estimator and train
   print("warm_start_from:", warm_start_from)
-  estimator = tf.estimator.tpu.TPUEstimator(
-    model_fn=model_fn,
-    use_tpu=True,
-    train_batch_size=total_bs,
-    eval_batch_size=total_bs,
-    config=tf.estimator.tpu.RunConfig(
-      cluster=tf.distribute.cluster_resolver.TPUClusterResolver(tpu=tpu, zone=zone, project=project),
-      model_dir=model_dir,
-      session_config=tf.ConfigProto(allow_soft_placement=True, log_device_placement=True),
-      tpu_config=tf.estimator.tpu.TPUConfig(
-        iterations_per_loop=iterations_per_loop,
-        num_shards=None,
-        per_host_input_for_training=tf.estimator.tpu.InputPipelineConfig.PER_HOST_V2
+  if use_tpu:
+    estimator = tf.estimator.tpu.TPUEstimator(
+      model_fn=model_fn,
+      use_tpu=True,
+      train_batch_size=total_bs,
+      eval_batch_size=total_bs,
+      config=tf.estimator.tpu.RunConfig(
+        cluster=tf.distribute.cluster_resolver.TPUClusterResolver(tpu=tpu, zone=zone, project=project),
+        model_dir=model_dir,
+        session_config=tf.ConfigProto(allow_soft_placement=True, log_device_placement=True),
+        tpu_config=tf.estimator.tpu.TPUConfig(
+          iterations_per_loop=iterations_per_loop,
+          num_shards=None,
+          per_host_input_for_training=tf.estimator.tpu.InputPipelineConfig.PER_HOST_V2
+        ),
+        save_checkpoints_secs=1600,  # 30 minutes
+        keep_checkpoint_max=keep_checkpoint_max
       ),
-      save_checkpoints_secs=1600,  # 30 minutes
-      keep_checkpoint_max=keep_checkpoint_max
-    ),
-    warm_start_from=warm_start_from
-  )
+      warm_start_from=warm_start_from
+    )
+  else:
+    estimator = tf.estimator.Estimator(
+      model_fn=model_fn,
+      config=tf.estimator.RunConfig(
+        model_dir=model_dir,
+        session_config=tf.ConfigProto(allow_soft_placement=True, log_device_placement=True),
+        save_checkpoints_secs=1600,
+        keep_checkpoint_max=keep_checkpoint_max
+      ),
+      warm_start_from=warm_start_from
+    )
   estimator.train(input_fn=train_input_fn, max_steps=max_steps)
 
 
@@ -255,9 +283,14 @@ class InceptionFeatures:
 class EvalWorker:
   def __init__(self, tpu_name, model_constructor, total_bs, dataset, inception_bs=8, num_inception_samples=1024, limit_dataset_size=0):
 
-    self.resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu=tpu_name)
-    tf.tpu.experimental.initialize_tpu_system(self.resolver)
-    self.strategy = tf.distribute.experimental.TPUStrategy(self.resolver)
+    self.use_tpu = bool(tpu_name) and str(tpu_name).lower() not in ['local', 'cpu', 'gpu', 'none']
+    if self.use_tpu:
+      self.resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu=tpu_name)
+      tf.tpu.experimental.initialize_tpu_system(self.resolver)
+      self.strategy = tf.distribute.experimental.TPUStrategy(self.resolver)
+    else:
+      self.resolver = None
+      self.strategy = _one_device_strategy()
 
     self.num_cores = self.strategy.num_replicas_in_sync
     assert total_bs % self.num_cores == 0
@@ -472,11 +505,12 @@ class EvalWorker:
     # Make the session
     config = tf.ConfigProto()
     config.allow_soft_placement = True
-    cluster_spec = self.resolver.cluster_spec()
-    if cluster_spec:
-      config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
+    if self.resolver is not None:
+      cluster_spec = self.resolver.cluster_spec()
+      if cluster_spec:
+        config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
     print('making session...')
-    with tf.Session(target=self.resolver.master(), config=config) as sess:
+    with tf.Session(target=self.resolver.master() if self.resolver is not None else '', config=config) as sess:
 
       print('initializing global variables')
       sess.run(tf.global_variables_initializer())
