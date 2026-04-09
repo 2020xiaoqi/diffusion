@@ -83,7 +83,7 @@ class Model(tpu_utils.Model):
 
 
 def evaluation(
-    model_dir, tpu_name, bucket_name_prefix='', once=False, dump_samples_only=False, total_bs=128,
+    model_dir, tpu_name='local', bucket_name_prefix='', once=False, dump_samples_only=False, total_bs=128,
     tfr_file='tensorflow_datasets/lsun/church-r08.tfrecords', samples_dir=None, num_inception_samples=2048,
 ):
   tfr_file = utils.resolve_data_path(tfr_file, bucket_name_prefix=bucket_name_prefix)
@@ -113,7 +113,7 @@ def evaluation(
 
 
 def train(
-    exp_name, tpu_name, bucket_name_prefix='', model_name='unet2d16b2c112244', dataset='lsun',
+    exp_name, tpu_name='local', bucket_name_prefix='', model_name='unet2d16b2c112244', dataset='lsun',
     optimizer='adam', total_bs=64, grad_clip=1., lr=2e-5, warmup=5000,
     num_diffusion_timesteps=1000, beta_start=0.0001, beta_end=0.02, beta_schedule='linear', loss_type='noisepred',
     dropout=0.0, randflip=1, block_size=1,
@@ -122,6 +122,7 @@ def train(
 ):
   tfr_file = utils.resolve_data_path(tfr_file, bucket_name_prefix=bucket_name_prefix)
   log_dir = utils.resolve_data_path(log_dir, bucket_name_prefix=bucket_name_prefix)
+  log_dir = utils.ensure_local_dir_writable(log_dir, path_name='log_dir')
   print("tfr_file:", tfr_file)
   print("log_dir:", log_dir)
   kwargs = dict(locals())

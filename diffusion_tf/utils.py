@@ -1,5 +1,6 @@
 import contextlib
 import io
+import os
 import random
 import time
 
@@ -217,3 +218,21 @@ def resolve_data_path(path: str, bucket_name_prefix: str = None, region: str = N
     region = region or get_gcp_region()
     return 'gs://{}-{}/{}'.format(bucket_name_prefix, region, path)
   return path
+
+
+def ensure_local_dir_writable(path: str, *, path_name: str):
+  """
+  Ensure a local filesystem directory exists and is writable.
+  No-op for remote paths (gs://, s3://, ...).
+  """
+  if '://' in path:
+    return path
+  resolved = os.path.expanduser(path)
+  try:
+    tf.io.gfile.makedirs(resolved)
+  except tf.errors.OpError as e:
+    raise RuntimeError(
+      '{} is not writable: {}. '
+      'Please use a writable path (for example under $HOME).'.format(path_name, resolved)
+    ) from e
+  return resolved

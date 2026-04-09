@@ -21,13 +21,25 @@ def _make_ds_iterator(strategy, ds):
   return strategy.experimental_distribute_dataset(ds).make_initializable_iterator()
 
 
+def _one_device_strategy():
+  device = '/gpu:0' if tf.test.is_gpu_available() else '/cpu:0'
+  if hasattr(tf.distribute, 'OneDeviceStrategy'):
+    return tf.distribute.OneDeviceStrategy(device)
+  return tf.distribute.experimental.OneDeviceStrategy(device)
+
+
 class SimpleEvalWorker:
   def __init__(self, tpu_name, model_constructor, total_bs, dataset):
     tf.logging.set_verbosity(tf.logging.INFO)
 
-    self.resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu=tpu_name)
-    tf.tpu.experimental.initialize_tpu_system(self.resolver)
-    self.strategy = tf.distribute.experimental.TPUStrategy(self.resolver)
+    self.use_tpu = bool(tpu_name) and str(tpu_name).lower() not in ['local', 'cpu', 'gpu', 'none']
+    if self.use_tpu:
+      self.resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu=tpu_name)
+      tf.tpu.experimental.initialize_tpu_system(self.resolver)
+      self.strategy = tf.distribute.experimental.TPUStrategy(self.resolver)
+    else:
+      self.resolver = None
+      self.strategy = _one_device_strategy()
 
     self.num_cores = self.strategy.num_replicas_in_sync
     assert total_bs % self.num_cores == 0
@@ -178,11 +190,12 @@ class SimpleEvalWorker:
     # Make the session
     config = tf.ConfigProto()
     config.allow_soft_placement = True
-    cluster_spec = self.resolver.cluster_spec()
-    if cluster_spec:
-      config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
+    if self.resolver is not None:
+      cluster_spec = self.resolver.cluster_spec()
+      if cluster_spec:
+        config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
     print('making session...')
-    with tf.Session(target=self.resolver.master(), config=config) as sess:
+    with tf.Session(target=self.resolver.master() if self.resolver is not None else '', config=config) as sess:
 
       print('initializing global variables')
       sess.run(tf.global_variables_initializer())

@@ -101,10 +101,11 @@ class Model(tpu_utils.Model):
 
 
 def evaluation(
-    model_dir, tpu_name, bucket_name_prefix='', once=False, dump_samples_only=False, total_bs=128,
+    model_dir, tpu_name='local', bucket_name_prefix='', once=False, dump_samples_only=False, total_bs=128,
     tfds_data_dir='tensorflow_datasets',
 ):
   tfds_data_dir = utils.resolve_data_path(tfds_data_dir, bucket_name_prefix=bucket_name_prefix)
+  tfds_data_dir = utils.ensure_local_dir_writable(tfds_data_dir, path_name='tfds_data_dir')
   kwargs = tpu_utils.load_train_kwargs(model_dir)
   print('loaded kwargs:', kwargs)
   ds = datasets.get_dataset(kwargs['dataset'], tfds_data_dir=tfds_data_dir)
@@ -129,7 +130,7 @@ def evaluation(
 
 
 def train(
-    exp_name, tpu_name, bucket_name_prefix='', model_name='unet2d16b2c112244', dataset='celebahq256',
+    exp_name, tpu_name='local', bucket_name_prefix='', model_name='unet2d16b2c112244', dataset='celebahq256',
     optimizer='adam', total_bs=64, grad_clip=1., lr=0.00002, warmup=5000,
     num_diffusion_timesteps=1000, beta_start=0.0001, beta_end=0.02, beta_schedule='linear', loss_type='noisepred',
     dropout=0.0, randflip=1, block_size=1,
@@ -137,6 +138,8 @@ def train(
 ):
   tfds_data_dir = utils.resolve_data_path(tfds_data_dir, bucket_name_prefix=bucket_name_prefix)
   log_dir = utils.resolve_data_path(log_dir, bucket_name_prefix=bucket_name_prefix)
+  tfds_data_dir = utils.ensure_local_dir_writable(tfds_data_dir, path_name='tfds_data_dir')
+  log_dir = utils.ensure_local_dir_writable(log_dir, path_name='log_dir')
   kwargs = dict(locals())
   ds = datasets.get_dataset(dataset, tfds_data_dir=tfds_data_dir)
   tpu_utils.run_training(
