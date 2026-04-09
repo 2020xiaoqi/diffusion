@@ -45,6 +45,36 @@ python3 scripts/run_lsun.py evaluation \
 
 If `--bucket_name_prefix` is set, paths are still converted to `gs://...` as before.
 
+### Running on NVIDIA GPU (Ubuntu 24.04 / RTX 4090)
+This repository is based on TensorFlow 1.15 APIs (`tensorflow.compat.v1`) and was originally developed for TPU.
+On modern GPUs (e.g. RTX 4090), the most common reason for CPU-only execution is a CUDA/TensorFlow binary mismatch.
+
+Quick checklist:
+1. Install an NVIDIA driver that supports RTX 4090 and verify:
+   ```bash
+   nvidia-smi
+   ```
+2. Verify TensorFlow can see your GPU:
+   ```bash
+   python3 - <<'PY'
+   import tensorflow as tf
+   print("TF version:", tf.__version__)
+   print("GPUs:", tf.config.list_physical_devices("GPU"))
+   PY
+   ```
+3. Start training with non-TPU mode (GPU is auto-selected as `/gpu:0` when visible):
+   ```bash
+   python3 scripts/run_cifar.py train \
+     --tpu_name gpu \
+     --exp_name my_gpu_exp \
+     --tfds_data_dir /data/tensorflow_datasets \
+     --log_dir /data/logs
+   ```
+
+Notes:
+- If GPU is not listed in step 2, training will fall back to CPU automatically.
+- TF 1.15 wheels are very old; if your environment is CUDA 12-only, use a compatible CUDA/cuDNN + TensorFlow stack (often via Docker/Conda) before running this repo.
+
 ### Dataset paths on a local server
 - CIFAR-10 and CelebA-HQ use TFDS `data_dir` (`--tfds_data_dir`), e.g.:
   - `/data/tensorflow_datasets/cifar10/...`
