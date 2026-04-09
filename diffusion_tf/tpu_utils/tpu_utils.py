@@ -199,6 +199,12 @@ def run_training(
 
   # Set up Estimator and train
   print("warm_start_from:", warm_start_from)
+
+  def _train_input_fn(params=None):
+    params = dict(params or {})
+    params.setdefault('batch_size', total_bs)
+    return train_input_fn(params)
+
   if use_tpu:
     estimator = tf.estimator.tpu.TPUEstimator(
       model_fn=model_fn,
@@ -230,7 +236,7 @@ def run_training(
       ),
       warm_start_from=warm_start_from
     )
-  estimator.train(input_fn=train_input_fn, max_steps=max_steps)
+  estimator.train(input_fn=_train_input_fn, max_steps=max_steps)
 
 
 # ========== Evaluation / sampling ==========
