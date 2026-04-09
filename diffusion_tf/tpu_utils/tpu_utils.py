@@ -131,6 +131,8 @@ def run_training(
     if input('continue training? [y/n] ') != 'y':
       print('aborting')
       return
+  else:
+    tf.io.gfile.makedirs(model_dir)
 
   # Save kwargs in json format
   if dump_kwargs is not None:
