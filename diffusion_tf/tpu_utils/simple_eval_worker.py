@@ -34,9 +34,15 @@ class SimpleEvalWorker:
 
     self.use_tpu = bool(tpu_name) and str(tpu_name).lower() not in ['local', 'cpu', 'gpu', 'none']
     if self.use_tpu:
-      self.resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu=tpu_name)
-      tf.tpu.experimental.initialize_tpu_system(self.resolver)
-      self.strategy = tf.distribute.experimental.TPUStrategy(self.resolver)
+      try:
+        self.resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu=tpu_name)
+        tf.tpu.experimental.initialize_tpu_system(self.resolver)
+        self.strategy = tf.distribute.experimental.TPUStrategy(self.resolver)
+      except Exception as e:
+        print('failed to initialize TPU ({}), falling back to local strategy'.format(e))
+        self.use_tpu = False
+        self.resolver = None
+        self.strategy = _one_device_strategy()
     else:
       self.resolver = None
       self.strategy = _one_device_strategy()

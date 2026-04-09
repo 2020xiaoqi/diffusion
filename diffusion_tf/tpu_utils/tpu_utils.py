@@ -141,7 +141,8 @@ def run_training(
 
   # model_fn for TPUEstimator
   def model_fn(features, params, mode):
-    local_bs = params['batch_size']
+    params = params or {}
+    local_bs = params.get('batch_size', total_bs)
     print('Global batch size: {}, local batch size: {}'.format(total_bs, local_bs))
     if use_tpu:
       assert total_bs == num_tpu_replicas() * local_bs
@@ -199,6 +200,12 @@ def run_training(
 
   # Set up Estimator and train
   print("warm_start_from:", warm_start_from)
+
+  def _train_input_fn(params=None):
+    params = dict(params or {})
+    params.setdefault('batch_size', total_bs)
+    return train_input_fn(params)
+
   if use_tpu:
     estimator = tf.estimator.tpu.TPUEstimator(
       model_fn=model_fn,
@@ -230,7 +237,7 @@ def run_training(
       ),
       warm_start_from=warm_start_from
     )
-  estimator.train(input_fn=train_input_fn, max_steps=max_steps)
+  estimator.train(input_fn=_train_input_fn, max_steps=max_steps)
 
 
 # ========== Evaluation / sampling ==========
@@ -287,9 +294,15 @@ class EvalWorker:
 
     self.use_tpu = bool(tpu_name) and str(tpu_name).lower() not in ['local', 'cpu', 'gpu', 'none']
     if self.use_tpu:
-      self.resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu=tpu_name)
-      tf.tpu.experimental.initialize_tpu_system(self.resolver)
-      self.strategy = tf.distribute.experimental.TPUStrategy(self.resolver)
+      try:
+        self.resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu=tpu_name)
+        tf.tpu.experimental.initialize_tpu_system(self.resolver)
+        self.strategy = tf.distribute.experimental.TPUStrategy(self.resolver)
+      except Exception as e:
+        print('failed to initialize TPU ({}), falling back to local strategy'.format(e))
+        self.use_tpu = False
+        self.resolver = None
+        self.strategy = _one_device_strategy()
     else:
       self.resolver = None
       self.strategy = _one_device_strategy()
